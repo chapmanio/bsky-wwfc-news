@@ -1,0 +1,25 @@
+name = "bsky-wwfc-news"
+main = "src/app/index.ts"
+compatibility_date = "2024-01-01"
+compatibility_flags = ["nodejs_compat"]
+
+# Cron trigger - runs every 5 minutes
+[triggers]
+crons = ["*/5 * * * *"]
+
+# KV namespace for storing posted items state
+[[kv_namespaces]]
+binding = "POSTED_ITEMS"
+id = "YOUR_KV_NAMESPACE_ID"
+
+# Environment variables (secrets should be set via wrangler secret put)
+[vars]
+# Non-sensitive config can go here
+
+# For local development
+[env.dev]
+name = "bsky-wwfc-news-dev"
+
+[[env.dev.kv_namespaces]]
+binding = "POSTED_ITEMS"
+id = "YOUR_DEV_KV_NAMESPACE_ID"

@@ -1,0 +1,36 @@
+{
+  "name": "bsky-wwfc-news",
+  "version": "1.0.0",
+  "description": "A bot to post WWFC news to a BlueSky account",
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "lint": "oxlint src/",
+    "format": "prettier --write \"src/**/*.ts\"",
+    "format:check": "prettier --check \"src/**/*.ts\"",
+    "typecheck": "tsc --noEmit"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/chapmanio/bsky-wwfc-news.git"
+  },
+  "keywords": ["bluesky", "wwfc", "wycombe-wanderers", "cloudflare-workers"],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/chapmanio/bsky-wwfc-news/issues"
+  },
+  "homepage": "https://github.com/chapmanio/bsky-wwfc-news#readme",
+  "dependencies": {
+    "@atproto/api": "^0.18.10",
+    "@sentry/cloudflare": "^10.32.1"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20260107.1",
+    "oxlint": "^1.38.0",
+    "prettier": "^3.7.4",
+    "typescript": "^5.9.3",
+    "wrangler": "^4.57.0"
+  }
+}
