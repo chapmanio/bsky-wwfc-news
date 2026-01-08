@@ -175,39 +175,30 @@ export async function createBlueskyClient(options: BlueskyClientOptions) {
 
 /**
  * Resize an image using Cloudflare Images
+ * @see https://developers.cloudflare.com/images/transform-images/bindings/
  */
 async function resizeImage(
   imageData: ArrayBuffer,
   imagesBinding: ImagesBinding
 ): Promise<ArrayBuffer | null> {
   try {
-    const resizedStream = await imagesBinding.transform(imageData, {
-      width: RESIZE_TARGET_WIDTH,
-      fit: 'scale-down',
-      quality: RESIZE_QUALITY,
-      format: 'jpeg',
-    });
+    // Use the Cloudflare Images binding chain API
+    const response = await imagesBinding
+      .input(imageData)
+      .transform({
+        width: RESIZE_TARGET_WIDTH,
+        fit: 'scale-down',
+        quality: RESIZE_QUALITY,
+      })
+      .output({ format: 'image/jpeg' })
+      .response();
 
-    // Convert ReadableStream to ArrayBuffer
-    const reader = resizedStream.getReader();
-    const chunks: Uint8Array[] = [];
-
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      chunks.push(value);
+    if (!response.ok) {
+      console.error(`Image resize failed: ${response.status} ${response.statusText}`);
+      return null;
     }
 
-    // Combine chunks into single ArrayBuffer
-    const totalLength = chunks.reduce((sum, chunk) => sum + chunk.length, 0);
-    const result = new Uint8Array(totalLength);
-    let offset = 0;
-    for (const chunk of chunks) {
-      result.set(chunk, offset);
-      offset += chunk.length;
-    }
-
-    return result.buffer;
+    return await response.arrayBuffer();
   } catch (error) {
     console.error('Failed to resize image:', error);
     return null;
