@@ -15,10 +15,6 @@ crons = ["*/5 * * * *"]
 binding = "POSTED_ITEMS"
 id = "3653e613c35c420194944c840e0a95a9"
 
-# Cloudflare Images binding for image resizing
-[images]
-binding = "IMAGES"
-
 [observability]
 [observability.logs]
 enabled = true

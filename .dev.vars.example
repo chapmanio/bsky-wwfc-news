@@ -9,5 +9,8 @@ BLUESKY_PASSWORD=your-app-password
 YOUTUBE_API_KEY=your-youtube-api-key
 YOUTUBE_CHANNEL_ID=UC... # Get from YouTube channel page
 
+# Cloudinary
+CLOUDINARY_CLOUD_NAME=your_cloud_name_here
+
 # Sentry (optional for local dev)
 SENTRY_DSN=https://xxx@xxx.ingest.sentry.io/xxx
