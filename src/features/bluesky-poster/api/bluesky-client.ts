@@ -6,11 +6,32 @@
 
 import { BskyAgent, RichText, BlobRef } from '@atproto/api';
 import type { BlueskyCredentials, ExternalEmbedData } from '../model';
+import type { ImagesBinding } from '../../../app/config';
+
+/** Maximum image size for Bluesky (1MB) */
+const MAX_IMAGE_SIZE_BYTES = 1_000_000;
+
+/** Target width for resized images */
+const RESIZE_TARGET_WIDTH = 800;
+
+/** Quality for resized images (0-100) */
+const RESIZE_QUALITY = 80;
+
+/**
+ * Options for creating a Bluesky client
+ */
+interface BlueskyClientOptions {
+  credentials: BlueskyCredentials;
+  /** Cloudflare Images binding for resizing large images (optional) */
+  imagesBinding?: ImagesBinding;
+}
 
 /**
  * Create a Bluesky API client
  */
-export async function createBlueskyClient(credentials: BlueskyCredentials) {
+export async function createBlueskyClient(options: BlueskyClientOptions) {
+  const { credentials, imagesBinding } = options;
+
   const agent = new BskyAgent({
     service: 'https://bsky.social',
   });
@@ -75,17 +96,59 @@ export async function createBlueskyClient(credentials: BlueskyCredentials) {
 
     /**
      * Upload an image blob from a URL
+     *
+     * If the image is too large and the Images binding is available,
+     * attempts to resize it. Otherwise returns null for large images.
      */
-    async uploadImageFromUrl(imageUrl: string): Promise<BlobRef> {
+    async uploadImageFromUrl(imageUrl: string): Promise<BlobRef | null> {
       // Fetch the image
       const response = await fetch(imageUrl);
 
       if (!response.ok) {
-        throw new Error(`Failed to fetch image: ${response.status} ${response.statusText}`);
+        console.warn(`Failed to fetch image: ${response.status} ${response.statusText}`);
+        return null;
       }
 
-      const contentType = response.headers.get('content-type') || 'image/jpeg';
-      const arrayBuffer = await response.arrayBuffer();
+      let contentType = response.headers.get('content-type') || 'image/jpeg';
+      let arrayBuffer = await response.arrayBuffer();
+      const originalSize = arrayBuffer.byteLength;
+
+      // Check if image needs resizing
+      if (arrayBuffer.byteLength > MAX_IMAGE_SIZE_BYTES) {
+        const sizeMB = (arrayBuffer.byteLength / 1_000_000).toFixed(2);
+        console.log(`Image is ${sizeMB}MB, attempting to resize...`);
+
+        // Try to resize using Cloudflare Images if available
+        if (imagesBinding) {
+          try {
+            const resizedResult = await resizeImage(arrayBuffer, imagesBinding);
+            if (resizedResult && resizedResult.byteLength <= MAX_IMAGE_SIZE_BYTES) {
+              arrayBuffer = resizedResult;
+              contentType = 'image/jpeg'; // Cloudflare Images outputs JPEG by default
+              console.log(
+                `Resized image from ${(originalSize / 1000).toFixed(0)}KB to ${(arrayBuffer.byteLength / 1000).toFixed(0)}KB`
+              );
+            } else if (resizedResult) {
+              console.warn(
+                `Resized image still too large: ${(resizedResult.byteLength / 1_000_000).toFixed(2)}MB`
+              );
+              return null;
+            } else {
+              console.warn('Image resize failed, skipping thumbnail');
+              return null;
+            }
+          } catch (error) {
+            console.warn('Error resizing image:', error);
+            return null;
+          }
+        } else {
+          console.warn(
+            `Image too large (${sizeMB}MB) and no Images binding available. Skipping thumbnail.`
+          );
+          return null;
+        }
+      }
+
       const uint8Array = new Uint8Array(arrayBuffer);
 
       // Upload to Bluesky
@@ -93,6 +156,7 @@ export async function createBlueskyClient(credentials: BlueskyCredentials) {
         encoding: contentType,
       });
 
+      console.log(`Uploaded image: ${(arrayBuffer.byteLength / 1000).toFixed(0)}KB`);
       return uploadResponse.data.blob;
     },
 
@@ -107,6 +171,47 @@ export async function createBlueskyClient(credentials: BlueskyCredentials) {
       return uploadResponse.data.blob;
     },
   };
+}
+
+/**
+ * Resize an image using Cloudflare Images
+ */
+async function resizeImage(
+  imageData: ArrayBuffer,
+  imagesBinding: ImagesBinding
+): Promise<ArrayBuffer | null> {
+  try {
+    const resizedStream = await imagesBinding.transform(imageData, {
+      width: RESIZE_TARGET_WIDTH,
+      fit: 'scale-down',
+      quality: RESIZE_QUALITY,
+      format: 'jpeg',
+    });
+
+    // Convert ReadableStream to ArrayBuffer
+    const reader = resizedStream.getReader();
+    const chunks: Uint8Array[] = [];
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      chunks.push(value);
+    }
+
+    // Combine chunks into single ArrayBuffer
+    const totalLength = chunks.reduce((sum, chunk) => sum + chunk.length, 0);
+    const result = new Uint8Array(totalLength);
+    let offset = 0;
+    for (const chunk of chunks) {
+      result.set(chunk, offset);
+      offset += chunk.length;
+    }
+
+    return result.buffer;
+  } catch (error) {
+    console.error('Failed to resize image:', error);
+    return null;
+  }
 }
 
 /**

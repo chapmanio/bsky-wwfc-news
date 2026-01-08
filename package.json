@@ -15,7 +15,12 @@
     "type": "git",
     "url": "git+https://github.com/chapmanio/bsky-wwfc-news.git"
   },
-  "keywords": ["bluesky", "wwfc", "wycombe-wanderers", "cloudflare-workers"],
+  "keywords": [
+    "bluesky",
+    "wwfc",
+    "wycombe-wanderers",
+    "cloudflare-workers"
+  ],
   "author": "",
   "license": "ISC",
   "bugs": {

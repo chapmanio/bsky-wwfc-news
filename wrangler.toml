@@ -3,6 +3,9 @@ main = "src/app/index.ts"
 compatibility_date = "2024-01-01"
 compatibility_flags = ["nodejs_compat"]
 
+# Enable workers.dev subdomain (e.g., bsky-wwfc-news.youraccount.workers.dev)
+workers_dev = true
+
 # Cron trigger - runs every 5 minutes
 [triggers]
 crons = ["*/5 * * * *"]
@@ -10,16 +13,15 @@ crons = ["*/5 * * * *"]
 # KV namespace for storing posted items state
 [[kv_namespaces]]
 binding = "POSTED_ITEMS"
-id = "YOUR_KV_NAMESPACE_ID"
+id = "3653e613c35c420194944c840e0a95a9"
 
-# Environment variables (secrets should be set via wrangler secret put)
-[vars]
-# Non-sensitive config can go here
+# Cloudflare Images binding for image resizing
+[images]
+binding = "IMAGES"
 
-# For local development
-[env.dev]
-name = "bsky-wwfc-news-dev"
-
-[[env.dev.kv_namespaces]]
-binding = "POSTED_ITEMS"
-id = "YOUR_DEV_KV_NAMESPACE_ID"
+[observability]
+[observability.logs]
+enabled = true
+head_sampling_rate = 1
+invocation_logs = true
+persist = true

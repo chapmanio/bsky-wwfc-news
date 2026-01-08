@@ -21,7 +21,9 @@ export function createWwfcClient() {
     async fetchArticles(options: FetchArticlesOptions = {}): Promise<WwfcArticle[]> {
       const { pageSize = 10, category } = options;
 
-      const response = await http.get<WwfcNewsResponse>('/news', {
+      console.log(`Fetching WWFC articles (pageSize: ${pageSize})`);
+
+      const response = await http.get<WwfcNewsResponse>('news', {
         params: {
           pageSize,
           ...(category && { category }),
@@ -32,8 +34,11 @@ export function createWwfcClient() {
         throw new Error(`WWFC API error: ${response.message}`);
       }
 
-      return response.body.map((item) => ({
-        postId: item.postID,
+      console.log(`Got ${response.body.length} articles from WWFC API`);
+
+      const articles = response.body.map((item) => ({
+        // Ensure postId is a string for consistent comparison
+        postId: String(item.postID),
         title: item.postTitle,
         summary: item.postSummary || '',
         slug: item.postSlug,
@@ -43,6 +48,13 @@ export function createWwfcClient() {
         categoryName: item.postCategoryName,
         thumbnailUrl: getBestImage(item),
       }));
+
+      // Log first few articles for debugging
+      articles.slice(0, 3).forEach((a, i) => {
+        console.log(`  ${i + 1}. "${a.title}" (ID: ${a.postId})`);
+      });
+
+      return articles;
     },
   };
 }

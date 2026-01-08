@@ -43,6 +43,8 @@ export function createHttpClient(options: HttpClientOptions = {}) {
       const { params, headers, ...fetchOptions } = requestOptions;
       const url = buildUrl(baseUrl, path, params);
 
+      console.log(`[HTTP GET] ${url}`);
+
       const response = await fetch(url, {
         method: 'GET',
         headers: {
@@ -53,7 +55,9 @@ export function createHttpClient(options: HttpClientOptions = {}) {
       });
 
       if (!response.ok) {
-        throw new HttpError(response.status, response.statusText, await response.text());
+        const body = await response.text();
+        console.error(`[HTTP GET] Error: ${response.status} ${response.statusText}`);
+        throw new HttpError(response.status, response.statusText, body);
       }
 
       return response.json() as Promise<T>;

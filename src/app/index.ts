@@ -20,6 +20,92 @@ export type { Env };
 const ALERT_FAILURE_THRESHOLD = 3;
 
 /**
+ * Initialize state by marking current content as already posted
+ * Use this on first run to avoid posting all historical content
+ *
+ * @param skipLatest - If true, skip the latest item from each source (for testing)
+ */
+async function initializeState(
+  env: Env,
+  options: { skipLatest?: boolean } = {}
+): Promise<{
+  youtube: { markedAsPosted: number; skippedLatest?: string };
+  wwfcNews: { markedAsPosted: number; skippedLatest?: string };
+}> {
+  const { skipLatest = false } = options;
+  const stateManager = createStateManager(env.POSTED_ITEMS);
+
+  const result: {
+    youtube: { markedAsPosted: number; skippedLatest?: string };
+    wwfcNews: { markedAsPosted: number; skippedLatest?: string };
+  } = {
+    youtube: { markedAsPosted: 0 },
+    wwfcNews: { markedAsPosted: 0 },
+  };
+
+  // Fetch current YouTube videos and mark as posted
+  try {
+    console.log('Initializing YouTube state...');
+    console.log(`Using channel ID: ${env.YOUTUBE_CHANNEL_ID}`);
+    const youtubeClient = createYouTubeClient(env.YOUTUBE_API_KEY);
+
+    // Fetch videos
+    const videos = await youtubeClient.fetchChannelUploads(env.YOUTUBE_CHANNEL_ID, 20);
+    console.log(`Found ${videos.length} regular videos`);
+
+    // If skipLatest is true, skip the first (most recent) video
+    let videosToMark = videos;
+    if (skipLatest && videos.length > 0) {
+      const skipped = videos[0];
+      videosToMark = videos.slice(1);
+      result.youtube.skippedLatest = `${skipped.title} (${skipped.videoId})`;
+      console.log(`Skipping latest video for testing: ${skipped.title}`);
+    }
+
+    const videoIds = videosToMark.map((v) => v.videoId);
+
+    if (videoIds.length > 0) {
+      await stateManager.markManyAsPosted('youtube', videoIds);
+      result.youtube.markedAsPosted = videoIds.length;
+      console.log(`Marked ${videoIds.length} YouTube videos as already posted`);
+    }
+  } catch (error) {
+    console.error('Error initializing YouTube state:', error);
+    throw error;
+  }
+
+  // Fetch current WWFC articles and mark as posted
+  try {
+    console.log('Initializing WWFC news state...');
+    const wwfcClient = createWwfcClient();
+    const articles = await wwfcClient.fetchArticles({ pageSize: 20 });
+
+    // If skipLatest is true, skip the first (most recent) article
+    let articlesToMark = articles;
+    if (skipLatest && articles.length > 0) {
+      const skipped = articles[0];
+      articlesToMark = articles.slice(1);
+      result.wwfcNews.skippedLatest = `${skipped.title} (${skipped.postId})`;
+      console.log(`Skipping latest article for testing: ${skipped.title}`);
+    }
+
+    const articleIds = articlesToMark.map((a) => a.postId);
+
+    if (articleIds.length > 0) {
+      await stateManager.markManyAsPosted('wwfcNews', articleIds);
+      result.wwfcNews.markedAsPosted = articleIds.length;
+      console.log(`Marked ${articleIds.length} WWFC articles as already posted`);
+    }
+  } catch (error) {
+    console.error('Error initializing WWFC news state:', error);
+    throw error;
+  }
+
+  console.log('Initialization complete!');
+  return result;
+}
+
+/**
  * Main orchestration function - checks for new content and posts to Bluesky
  */
 async function processNewContent(env: Env): Promise<void> {
@@ -88,8 +174,12 @@ async function processNewContent(env: Env): Promise<void> {
   // Create Bluesky client and post content
   try {
     const blueskyClient = await createBlueskyClient({
-      identifier: env.BLUESKY_IDENTIFIER,
-      password: env.BLUESKY_PASSWORD,
+      credentials: {
+        identifier: env.BLUESKY_IDENTIFIER,
+        password: env.BLUESKY_PASSWORD,
+      },
+      // Pass Images binding for resizing large images (if available)
+      imagesBinding: env.IMAGES,
     });
 
     const results = await postContentItems(allNewItems, blueskyClient);
@@ -218,6 +308,64 @@ const workerHandlers = {
       );
     }
 
+    // Initialize endpoint - mark current content as posted without actually posting
+    // Use this on first run to avoid posting historical content
+    // Add ?skipLatest=true to skip the latest item from each source (for testing)
+    if (url.pathname === '/initialize' && request.method === 'POST') {
+      try {
+        const skipLatest = url.searchParams.get('skipLatest') === 'true';
+        if (skipLatest) {
+          console.log('Initialize called with skipLatest=true (testing mode)');
+        }
+
+        const result = await initializeState(env, { skipLatest });
+        return new Response(JSON.stringify(result), {
+          headers: { 'Content-Type': 'application/json' },
+        });
+      } catch (error) {
+        return new Response(
+          JSON.stringify({
+            error: 'Failed to initialize',
+            message: error instanceof Error ? error.message : String(error),
+          }),
+          {
+            status: 500,
+            headers: { 'Content-Type': 'application/json' },
+          }
+        );
+      }
+    }
+
+    // Clear endpoint - reset all state (use before re-initializing with new settings)
+    if (url.pathname === '/clear' && request.method === 'POST') {
+      try {
+        const stateManager = createStateManager(env.POSTED_ITEMS);
+        await stateManager.clearAllState();
+        console.log('All state cleared');
+
+        return new Response(
+          JSON.stringify({
+            message: 'All state cleared',
+            timestamp: new Date().toISOString(),
+          }),
+          {
+            headers: { 'Content-Type': 'application/json' },
+          }
+        );
+      } catch (error) {
+        return new Response(
+          JSON.stringify({
+            error: 'Failed to clear state',
+            message: error instanceof Error ? error.message : String(error),
+          }),
+          {
+            status: 500,
+            headers: { 'Content-Type': 'application/json' },
+          }
+        );
+      }
+    }
+
     // Status endpoint - show recent state
     if (url.pathname === '/status') {
       try {
@@ -264,6 +412,9 @@ const workerHandlers = {
           'GET /health': 'Health check',
           'GET /status': 'Current state information',
           'POST /trigger': 'Manually trigger content check',
+          'POST /initialize': 'Mark current content as posted (run once on first deploy)',
+          'POST /initialize?skipLatest=true': 'Same as above, but skip latest item (for testing)',
+          'POST /clear': 'Clear all state (use before re-initializing)',
         },
       }),
       {

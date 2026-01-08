@@ -27,20 +27,44 @@ function truncateText(text: string, maxLength: number): string {
 /**
  * Format a video item into a Bluesky post
  *
- * For videos, we just include the title and URL - Bluesky clients
- * will automatically render YouTube URLs as embedded videos.
+ * For videos, we include just the title - the URL will be in the embed
  */
 function formatVideoPost(video: VideoItem): string {
-  const text = `${video.title}\n\n${video.url}`;
+  return truncateText(video.title, MAX_POST_LENGTH);
+}
 
-  // If the post is too long, truncate the title
-  if (text.length > MAX_POST_LENGTH) {
-    const urlPart = `\n\n${video.url}`;
-    const maxTitleLength = MAX_POST_LENGTH - urlPart.length;
-    return `${truncateText(video.title, maxTitleLength)}${urlPart}`;
+/**
+ * Create an external embed for a YouTube video
+ *
+ * Bluesky clients render external embeds with YouTube URLs as playable videos
+ */
+async function createVideoEmbed(
+  video: VideoItem,
+  blueskyClient: BlueskyClient
+): Promise<ExternalEmbedData> {
+  let thumb: ExternalEmbedData['thumb'] | undefined;
+
+  // Upload thumbnail if available
+  if (video.thumbnailUrl) {
+    try {
+      const uploadedThumb = await blueskyClient.uploadImageFromUrl(video.thumbnailUrl);
+      if (uploadedThumb) {
+        thumb = uploadedThumb;
+      } else {
+        console.log(`Posting video "${video.title}" without thumbnail (image too large)`);
+      }
+    } catch (error) {
+      console.warn(`Failed to upload thumbnail for video ${video.id}:`, error);
+      // Continue without thumbnail
+    }
   }
 
-  return text;
+  return {
+    uri: video.url,
+    title: video.title,
+    description: video.description || '',
+    thumb,
+  };
 }
 
 /**
@@ -65,7 +89,13 @@ async function createArticleEmbed(
   // Upload thumbnail if available
   if (article.thumbnailUrl) {
     try {
-      thumb = await blueskyClient.uploadImageFromUrl(article.thumbnailUrl);
+      const uploadedThumb = await blueskyClient.uploadImageFromUrl(article.thumbnailUrl);
+      // uploadImageFromUrl returns null if image is too large
+      if (uploadedThumb) {
+        thumb = uploadedThumb;
+      } else {
+        console.log(`Posting article "${article.title}" without thumbnail (image too large)`);
+      }
     } catch (error) {
       console.warn(`Failed to upload thumbnail for article ${article.id}:`, error);
       // Continue without thumbnail
@@ -91,10 +121,11 @@ export async function postContentItem(
     let result: { uri: string; cid: string };
 
     if (isVideoItem(item)) {
-      // For videos, just post text with the URL
-      // Bluesky clients will auto-embed YouTube videos
+      // For videos, create an embed with thumbnail
+      // Bluesky clients render YouTube external embeds as playable videos
       const text = formatVideoPost(item);
-      result = await blueskyClient.postText(text);
+      const embed = await createVideoEmbed(item, blueskyClient);
+      result = await blueskyClient.postWithEmbed(text, embed);
     } else if (isArticleItem(item)) {
       // For articles, create an embed with thumbnail
       const text = formatArticlePost(item);

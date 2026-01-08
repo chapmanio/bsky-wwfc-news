@@ -114,7 +114,29 @@ export function createStateManager(kv: KVNamespace) {
     async filterNewItems<T extends { id: string }>(source: SourceKey, items: T[]): Promise<T[]> {
       const sourceState = await this.getSourceState(source);
       const postedSet = new Set(sourceState.postedIds);
-      return items.filter((item) => !postedSet.has(item.id));
+
+      console.log(
+        `[${source}] Checking ${items.length} items against ${postedSet.size} posted IDs`
+      );
+
+      const newItems = items.filter((item) => {
+        const isPosted = postedSet.has(item.id);
+        if (isPosted) {
+          console.log(`  - ${item.id}: already posted`);
+        } else {
+          console.log(`  + ${item.id}: NEW`);
+        }
+        return !isPosted;
+      });
+
+      return newItems;
+    },
+
+    /**
+     * Clear all state - useful for resetting after config changes
+     */
+    async clearAllState(): Promise<void> {
+      await kv.delete(STATE_KEY);
     },
   };
 }

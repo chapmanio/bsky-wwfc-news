@@ -128,6 +128,17 @@ npm run deploy
 | `/health` | GET | Health check |
 | `/status` | GET | Current state (posted counts, failures) |
 | `/trigger` | POST | Manually trigger content check |
+| `/initialize` | POST | Mark current content as posted (run once on first deploy) |
+
+### First Run - Important!
+
+**Before enabling the cron trigger**, call the `/initialize` endpoint to mark existing content as already posted. This prevents the bot from posting all historical videos and articles on first run:
+
+```bash
+curl -X POST https://your-worker.workers.dev/initialize
+```
+
+This will fetch the latest 20 videos and 20 articles and mark them as "already posted" without actually posting anything to Bluesky.
 
 ## Environment Variables
 
