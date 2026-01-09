@@ -107,9 +107,18 @@ async function initializeState(
 
 /**
  * Main orchestration function - checks for new content and posts to Bluesky
+ *
+ * OPTIMIZED: Uses single read/write pattern to minimize KV operations.
+ * - Reads state once at the start
+ * - All operations work on cached state in memory
+ * - Writes once at the end, only if something changed
  */
 async function processNewContent(env: Env): Promise<void> {
   const stateManager = createStateManager(env.POSTED_ITEMS);
+
+  // Load state once at the start (1 KV read)
+  await stateManager.loadState();
+  console.log('KV: State loaded');
 
   // Collect all new content items
   const allNewItems: ContentItem[] = [];
@@ -122,11 +131,11 @@ async function processNewContent(env: Env): Promise<void> {
     console.log(`Found ${newVideos.length} new videos`);
     allNewItems.push(...newVideos);
 
-    // Reset failure count on success
-    await stateManager.resetFailures('youtube');
+    // Reset failure count on success (in memory, only marks dirty if count was > 0)
+    stateManager.resetFailuresSync('youtube');
   } catch (error) {
     console.error('Error fetching YouTube videos:', error);
-    const failureCount = await stateManager.recordFailure('youtube');
+    const failureCount = stateManager.recordFailureSync('youtube');
 
     // Report to Sentry if we've hit the threshold
     if (failureCount >= ALERT_FAILURE_THRESHOLD) {
@@ -145,11 +154,11 @@ async function processNewContent(env: Env): Promise<void> {
     console.log(`Found ${newArticles.length} new articles`);
     allNewItems.push(...newArticles);
 
-    // Reset failure count on success
-    await stateManager.resetFailures('wwfcNews');
+    // Reset failure count on success (in memory, only marks dirty if count was > 0)
+    stateManager.resetFailuresSync('wwfcNews');
   } catch (error) {
     console.error('Error fetching WWFC news:', error);
-    const failureCount = await stateManager.recordFailure('wwfcNews');
+    const failureCount = stateManager.recordFailureSync('wwfcNews');
 
     // Report to Sentry if we've hit the threshold
     if (failureCount >= ALERT_FAILURE_THRESHOLD) {
@@ -160,9 +169,10 @@ async function processNewContent(env: Env): Promise<void> {
     }
   }
 
-  // If no new content, we're done
+  // If no new content, save state if needed (e.g., failure count changed) and we're done
   if (allNewItems.length === 0) {
     console.log('No new content to post');
+    await stateManager.saveIfDirty();
     return;
   }
 
@@ -183,8 +193,11 @@ async function processNewContent(env: Env): Promise<void> {
 
     const results = await postContentItems(allNewItems, blueskyClient);
 
-    // Process results and update state
-    await processPostResults(results, stateManager);
+    // Process results and update state (in memory)
+    processPostResultsSync(results, stateManager);
+
+    // Save state once at the end (1 KV write, only if something changed)
+    await stateManager.saveIfDirty();
   } catch (error) {
     console.error('Error posting to Bluesky:', error);
 
@@ -193,17 +206,21 @@ async function processNewContent(env: Env): Promise<void> {
       tags: { source: 'bluesky' },
     });
 
+    // Still try to save state (e.g., failure counts)
+    await stateManager.saveIfDirty();
+
     throw error;
   }
 }
 
 /**
- * Process post results and update state
+ * Process post results and update state (synchronously, in memory)
+ * Call stateManager.saveIfDirty() after this to persist changes
  */
-async function processPostResults(
+function processPostResultsSync(
   results: PostResult[],
   stateManager: ReturnType<typeof createStateManager>
-): Promise<void> {
+): void {
   const successfulVideos: string[] = [];
   const successfulArticles: string[] = [];
   let failureCount = 0;
@@ -236,14 +253,14 @@ async function processPostResults(
     }
   }
 
-  // Update state for successful posts
+  // Update state for successful posts (in memory)
   if (successfulVideos.length > 0) {
-    await stateManager.markManyAsPosted('youtube', successfulVideos);
+    stateManager.markManyAsPostedSync('youtube', successfulVideos);
     console.log(`Marked ${successfulVideos.length} videos as posted`);
   }
 
   if (successfulArticles.length > 0) {
-    await stateManager.markManyAsPosted('wwfcNews', successfulArticles);
+    stateManager.markManyAsPostedSync('wwfcNews', successfulArticles);
     console.log(`Marked ${successfulArticles.length} articles as posted`);
   }
 
@@ -375,12 +392,12 @@ const workerHandlers = {
           JSON.stringify({
             youtube: {
               postedCount: state.youtube.postedIds.length,
-              lastChecked: state.youtube.lastCheckedAt,
+              lastUpdated: state.youtube.lastUpdatedAt,
               consecutiveFailures: state.youtube.consecutiveFailures,
             },
             wwfcNews: {
               postedCount: state.wwfcNews.postedIds.length,
-              lastChecked: state.wwfcNews.lastCheckedAt,
+              lastUpdated: state.wwfcNews.lastUpdatedAt,
               consecutiveFailures: state.wwfcNews.consecutiveFailures,
             },
           }),

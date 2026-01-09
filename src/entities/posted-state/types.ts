@@ -9,8 +9,8 @@ export interface SourceState {
   /** IDs of items that have been posted */
   postedIds: string[];
 
-  /** Timestamp of last successful check */
-  lastCheckedAt: string;
+  /** Timestamp of last state update (only when content was posted or errors occurred) */
+  lastUpdatedAt: string;
 
   /** Count of consecutive failures */
   consecutiveFailures: number;
@@ -34,7 +34,7 @@ export type SourceKey = keyof PostedState;
  */
 export const DEFAULT_SOURCE_STATE: SourceState = {
   postedIds: [],
-  lastCheckedAt: new Date(0).toISOString(),
+  lastUpdatedAt: new Date(0).toISOString(),
   consecutiveFailures: 0,
 };
 
