@@ -91,34 +91,55 @@ export async function createBlueskyClient(
     /**
      * Upload an image blob from a URL
      *
-     * If the image is too large and Cloudinary is configured, attempts to resize
-     * using Cloudinary's fetch/transform feature.
-     * Returns null if resizing fails or image still too large.
+     * Strategy:
+     * 1. Try fetching the original image directly
+     * 2. If fetch fails OR image is too large, try Cloudinary (if configured)
+     * 3. Returns null if all attempts fail
      *
      * @see https://cloudinary.com/documentation/fetch_remote_images
      */
     async uploadImageFromUrl(imageUrl: string): Promise<BlobRef | null> {
-      // First, try fetching the original image
-      let response = await fetch(imageUrl);
+      let arrayBuffer: ArrayBuffer | null = null;
+      let contentType = 'image/jpeg';
+      let needsCloudinary = false;
+      let directFetchFailed = false;
 
-      if (!response.ok) {
-        console.warn(`Failed to fetch image: ${response.status} ${response.statusText}`);
-        return null;
+      // First, try fetching the original image directly
+      try {
+        const response = await fetch(imageUrl);
+
+        if (!response.ok) {
+          console.warn(`Failed to fetch image directly: ${response.status} ${response.statusText}`);
+          directFetchFailed = true;
+          needsCloudinary = true;
+        } else {
+          contentType = response.headers.get('content-type') || 'image/jpeg';
+          arrayBuffer = await response.arrayBuffer();
+          const originalSize = arrayBuffer.byteLength;
+
+          console.log(`Fetched image: ${(originalSize / 1000).toFixed(0)}KB`);
+
+          // Check if image is too large
+          if (arrayBuffer.byteLength > MAX_IMAGE_SIZE_BYTES) {
+            const sizeMB = (arrayBuffer.byteLength / 1_000_000).toFixed(2);
+            console.log(`Image too large (${sizeMB}MB), will try Cloudinary...`);
+            needsCloudinary = true;
+          }
+        }
+      } catch (error) {
+        console.warn(`Error fetching image directly: ${error}`);
+        directFetchFailed = true;
+        needsCloudinary = true;
       }
 
-      let contentType = response.headers.get('content-type') || 'image/jpeg';
-      let arrayBuffer = await response.arrayBuffer();
-      const originalSize = arrayBuffer.byteLength;
-
-      console.log(`Fetched image: ${(originalSize / 1000).toFixed(0)}KB`);
-
-      // If image is too large, try to resize using Cloudinary
-      if (arrayBuffer.byteLength > MAX_IMAGE_SIZE_BYTES) {
-        const sizeMB = (arrayBuffer.byteLength / 1_000_000).toFixed(2);
-        console.log(`Image too large (${sizeMB}MB), attempting to resize via Cloudinary...`);
-
+      // If we need Cloudinary (fetch failed or image too large), try it
+      if (needsCloudinary) {
         if (!cloudinaryCloudName) {
-          console.warn('Cloudinary not configured. Posting without thumbnail.');
+          if (directFetchFailed) {
+            console.warn('Direct fetch failed and Cloudinary not configured. Posting without thumbnail.');
+          } else {
+            console.warn('Image too large and Cloudinary not configured. Posting without thumbnail.');
+          }
           return null;
         }
 
@@ -129,35 +150,49 @@ export async function createBlueskyClient(
           // @see https://cloudinary.com/documentation/fetch_remote_images
           const transformUrl = `https://res.cloudinary.com/${cloudinaryCloudName}/image/fetch/w_${RESIZE_WIDTH},q_${RESIZE_QUALITY},f_jpg/${imageUrl}`;
 
-          console.log(`Requesting transformed image from Cloudinary...`);
+          console.log(`Requesting image from Cloudinary...`);
 
-          const resizedResponse = await fetch(transformUrl);
+          const cloudinaryResponse = await fetch(transformUrl);
 
-          if (resizedResponse.ok) {
-            arrayBuffer = await resizedResponse.arrayBuffer();
+          if (cloudinaryResponse.ok) {
+            const originalSize = arrayBuffer?.byteLength ?? 0;
+            arrayBuffer = await cloudinaryResponse.arrayBuffer();
             contentType = 'image/jpeg';
-            console.log(
-              `Resized image from ${(originalSize / 1000).toFixed(0)}KB to ${(arrayBuffer.byteLength / 1000).toFixed(0)}KB`
-            );
 
-            // Check if still too large after resizing
+            if (originalSize > 0) {
+              console.log(
+                `Resized image from ${(originalSize / 1000).toFixed(0)}KB to ${(arrayBuffer.byteLength / 1000).toFixed(0)}KB via Cloudinary`
+              );
+            } else {
+              console.log(
+                `Fetched image via Cloudinary: ${(arrayBuffer.byteLength / 1000).toFixed(0)}KB`
+              );
+            }
+
+            // Check if still too large after Cloudinary
             if (arrayBuffer.byteLength > MAX_IMAGE_SIZE_BYTES) {
               console.warn(
-                `Resized image still too large: ${(arrayBuffer.byteLength / 1_000_000).toFixed(2)}MB. Posting without thumbnail.`
+                `Image still too large after Cloudinary: ${(arrayBuffer.byteLength / 1_000_000).toFixed(2)}MB. Posting without thumbnail.`
               );
               return null;
             }
           } else {
-            const errorText = await resizedResponse.text();
+            const errorText = await cloudinaryResponse.text();
             console.warn(
-              `Failed to resize image via Cloudinary: ${resizedResponse.status} ${resizedResponse.statusText}. ${errorText}. Posting without thumbnail.`
+              `Failed to fetch/resize image via Cloudinary: ${cloudinaryResponse.status} ${cloudinaryResponse.statusText}. ${errorText}. Posting without thumbnail.`
             );
             return null;
           }
         } catch (error) {
-          console.warn(`Error resizing image via Cloudinary: ${error}. Posting without thumbnail.`);
+          console.warn(`Error with Cloudinary: ${error}. Posting without thumbnail.`);
           return null;
         }
+      }
+
+      // At this point we should have a valid arrayBuffer
+      if (!arrayBuffer) {
+        console.warn('No image data available. Posting without thumbnail.');
+        return null;
       }
 
       const uint8Array = new Uint8Array(arrayBuffer);

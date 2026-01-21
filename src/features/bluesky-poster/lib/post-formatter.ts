@@ -51,7 +51,7 @@ async function createVideoEmbed(
       if (uploadedThumb) {
         thumb = uploadedThumb;
       } else {
-        console.log(`Posting video "${video.title}" without thumbnail (image too large)`);
+        console.log(`Posting video "${video.title}" without thumbnail (upload returned null)`);
       }
     } catch (error) {
       console.warn(`Failed to upload thumbnail for video ${video.id}:`, error);
@@ -90,11 +90,11 @@ async function createArticleEmbed(
   if (article.thumbnailUrl) {
     try {
       const uploadedThumb = await blueskyClient.uploadImageFromUrl(article.thumbnailUrl);
-      // uploadImageFromUrl returns null if image is too large
+      // uploadImageFromUrl returns null if fetch failed or image couldn't be resized
       if (uploadedThumb) {
         thumb = uploadedThumb;
       } else {
-        console.log(`Posting article "${article.title}" without thumbnail (image too large)`);
+        console.log(`Posting article "${article.title}" without thumbnail (upload returned null)`);
       }
     } catch (error) {
       console.warn(`Failed to upload thumbnail for article ${article.id}:`, error);
