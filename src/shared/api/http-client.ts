@@ -2,6 +2,8 @@
  * HTTP client utilities for making API requests
  */
 
+import { withRetry } from '../lib';
+
 export interface HttpClientOptions {
   baseUrl?: string;
   headers?: Record<string, string>;
@@ -37,7 +39,7 @@ export function createHttpClient(options: HttpClientOptions = {}) {
 
   return {
     /**
-     * Make a GET request
+     * Make a GET request with automatic retry on 5xx / network errors
      */
     async get<T>(path: string, requestOptions: RequestOptions = {}): Promise<T> {
       const { params, headers, ...fetchOptions } = requestOptions;
@@ -45,22 +47,29 @@ export function createHttpClient(options: HttpClientOptions = {}) {
 
       console.log(`[HTTP GET] ${url}`);
 
-      const response = await fetch(url, {
-        method: 'GET',
-        headers: {
-          ...defaultHeaders,
-          ...headers,
+      return withRetry(
+        async () => {
+          const response = await fetch(url, {
+            method: 'GET',
+            headers: {
+              ...defaultHeaders,
+              ...headers,
+            },
+            ...fetchOptions,
+          });
+
+          if (!response.ok) {
+            const body = await response.text();
+            throw new HttpError(response.status, response.statusText, body);
+          }
+
+          return response.json() as Promise<T>;
         },
-        ...fetchOptions,
-      });
-
-      if (!response.ok) {
-        const body = await response.text();
-        console.error(`[HTTP GET] Error: ${response.status} ${response.statusText}`);
-        throw new HttpError(response.status, response.statusText, body);
-      }
-
-      return response.json() as Promise<T>;
+        {
+          maxAttempts: 3,
+          isRetryable: isRetryableError,
+        }
+      );
     },
 
     /**
@@ -103,6 +112,20 @@ export function createHttpClient(options: HttpClientOptions = {}) {
       return response.blob();
     },
   };
+}
+
+/**
+ * Determine if an error is worth retrying.
+ * Retries 5xx server errors and network-level failures (e.g. DNS, connection refused).
+ * Does not retry 4xx client errors — those won't self-heal.
+ */
+function isRetryableError(error: unknown): boolean {
+  if (error instanceof HttpError) {
+    return error.isRetryable();
+  }
+
+  // Network failures (TypeError from fetch, etc.) are retryable
+  return true;
 }
 
 /**
