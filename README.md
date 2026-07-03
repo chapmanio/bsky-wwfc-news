@@ -10,7 +10,7 @@ A Cloudflare Worker that automatically posts Wycombe Wanderers content to Bluesk
 - 🔄 **Automatic polling** - Checks for new content every 5 minutes
 - 📺 **YouTube embeds** - Videos are embedded directly in Bluesky posts
 - 🖼️ **Rich link cards** - News articles include thumbnail images
-- 📷 **Image optimization** - Large images automatically resized via Cloudinary
+- 🖼️ **Image optimization** - Thumbnails pre-resized via WWFC's image CDN
 - 🔒 **Deduplication** - Tracks posted content to prevent duplicates
 - ⚡ **Optimized KV usage** - Single read/write pattern minimizes Cloudflare KV operations
 - 📊 **Error monitoring** - Sentry integration with alerting on repeated failures
@@ -38,8 +38,7 @@ src/
 1. **Cloudflare Account** - Free tier is sufficient
 2. **Bluesky Account** - With an [App Password](https://bsky.app/settings/app-passwords)
 3. **YouTube API Key** - From [Google Cloud Console](https://console.cloud.google.com/)
-4. **Cloudinary Account** (optional) - For image resizing, [free tier available](https://cloudinary.com/)
-5. **Sentry Account** (optional) - For error monitoring
+4. **Sentry Account** (optional) - For error monitoring
 
 ## Setup
 
@@ -85,28 +84,12 @@ npx wrangler secret put YOUTUBE_API_KEY
 npx wrangler secret put YOUTUBE_CHANNEL_ID
 # Enter the channel ID (e.g., UCR_EcVkERzNZuRiEpmmsRng)
 
-# Optional: Cloudinary (for image resizing)
-npx wrangler secret put CLOUDINARY_CLOUD_NAME
-# Enter your Cloudinary cloud name
-
 # Optional: Sentry
 npx wrangler secret put SENTRY_DSN
 # Enter your Sentry DSN
 ```
 
-### 4. Cloudinary Setup (Optional but Recommended)
-
-Cloudinary is used to resize large news article images before uploading to Bluesky (which has a 1MB limit). Without Cloudinary, posts with oversized images will be posted without thumbnails.
-
-1. Create a free account at [cloudinary.com](https://cloudinary.com/)
-2. Find your **Cloud Name** in the dashboard (top-left corner)
-3. Go to **Settings** → **Security**
-4. Ensure **"Fetched URL"** is enabled (allows transforming external images)
-5. Add the secret: `npx wrangler secret put CLOUDINARY_CLOUD_NAME`
-
-The free tier includes 25 credits/month which is more than enough for this use case.
-
-### 5. Local Development
+### 4. Local Development
 
 Create a `.dev.vars` file (copy from `.dev.vars.example`):
 
@@ -134,7 +117,7 @@ curl http://localhost:8787/status
 curl -X POST http://localhost:8787/trigger
 ```
 
-### 6. Deploy
+### 5. Deploy
 
 ```bash
 npm run deploy
@@ -184,7 +167,6 @@ curl -X POST https://your-worker.workers.dev/trigger
 | `BLUESKY_PASSWORD`      | Yes      | Bluesky App Password                        |
 | `YOUTUBE_API_KEY`       | Yes      | YouTube Data API v3 key                     |
 | `YOUTUBE_CHANNEL_ID`    | Yes      | YouTube channel ID to monitor               |
-| `CLOUDINARY_CLOUD_NAME` | No       | Cloudinary cloud name for image resizing    |
 | `SENTRY_DSN`            | No       | Sentry DSN for error tracking               |
 
 ## How It Works
@@ -199,21 +181,10 @@ curl -X POST https://your-worker.workers.dev/trigger
 
 ### WWFC News Monitoring
 
-1. Uses the WWFC Gamechanger CMS API (no scraping needed!)
-2. Fetches recent articles with titles, summaries, and images
-3. Creates Bluesky posts with rich link card embeds
-4. Thumbnails are uploaded to Bluesky for consistent display
-
-### Image Handling
-
-Bluesky has a 1MB limit on uploaded images. When a news article has a large thumbnail:
-
-1. The original image is fetched and checked
-2. If over 1MB and Cloudinary is configured:
-   - Image is resized to 800px width with 75% quality via Cloudinary's fetch API
-   - Resized image is uploaded to Bluesky
-3. If Cloudinary is not configured or resizing fails:
-   - The post is created without a thumbnail image
+1. Uses the WWFC Gamechanger CMS v2 search API (no scraping needed!)
+2. Fetches recent articles with titles and images
+3. Thumbnails are pre-resized via the WWFC image CDN to stay under Bluesky's 1MB limit
+4. Creates Bluesky posts with rich link card embeds
 
 ### State Management
 

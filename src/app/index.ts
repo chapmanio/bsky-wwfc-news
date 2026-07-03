@@ -183,13 +183,10 @@ async function processNewContent(env: Env): Promise<void> {
 
   // Create Bluesky client and post content
   try {
-    const blueskyClient = await createBlueskyClient(
-      {
-        identifier: env.BLUESKY_IDENTIFIER,
-        password: env.BLUESKY_PASSWORD,
-      },
-      env.CLOUDINARY_CLOUD_NAME
-    );
+    const blueskyClient = await createBlueskyClient({
+      identifier: env.BLUESKY_IDENTIFIER,
+      password: env.BLUESKY_PASSWORD,
+    });
 
     const results = await postContentItems(allNewItems, blueskyClient);
 

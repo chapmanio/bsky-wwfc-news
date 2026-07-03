@@ -14,9 +14,6 @@ export interface Env {
   YOUTUBE_API_KEY: string;
   YOUTUBE_CHANNEL_ID: string;
 
-  // Cloudinary (optional - for resizing large images)
-  CLOUDINARY_CLOUD_NAME?: string;
-
   // Sentry (optional)
   SENTRY_DSN?: string;
 }

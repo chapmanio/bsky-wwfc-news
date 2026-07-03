@@ -77,8 +77,8 @@ const THUMBNAIL_WIDTH = 800;
  * Get the best available thumbnail URL from an article's attributes.
  *
  * Prefers the WWFC image CDN (fit-in) which returns a resized image well
- * under Bluesky's 1MB limit. Raw S3 URLs are often 1–3MB and will fail
- * without Cloudinary configured.
+ * under Bluesky's 1MB limit. Raw S3 URLs are often 1-3MB and would
+ * exceed the limit.
  */
 function getBestImage(attrs: WwfcNewsAttributes): string {
   const mediaId =
