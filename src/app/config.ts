@@ -30,3 +30,8 @@ export const WWFC_BASE_URL = 'https://www.wwfc.com';
  * WWFC API base URL (v2 news search endpoint)
  */
 export const WWFC_API_URL = 'https://news.cms.web.gc.wycombewanderersfcservices.co.uk/v2/';
+
+/**
+ * WWFC image CDN — serves resized images via the fit-in endpoint
+ */
+export const WWFC_IMAGE_CDN_URL = 'https://images.gc.wycombewanderersfcservices.co.uk';

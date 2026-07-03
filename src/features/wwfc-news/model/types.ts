@@ -74,6 +74,8 @@ export interface WwfcNewsAttributes {
   postCategoryName: string;
   publishedDateTime: string;
   description?: string | null;
+  mediaLibraryID?: string | null;
+  heroSmallMediaLibraryID?: string | null;
   imageData?: WwfcImageData;
   heroSmallImageData?: WwfcImageData;
 }

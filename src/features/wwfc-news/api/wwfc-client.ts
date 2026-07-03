@@ -5,10 +5,11 @@
  */
 
 import { createHttpClient } from '../../../shared/api';
-import { WWFC_API_URL, WWFC_BASE_URL } from '../../../shared/config';
+import { WWFC_API_URL, WWFC_BASE_URL, WWFC_IMAGE_CDN_URL } from '../../../shared/config';
 import type {
   WwfcArticle,
   WwfcNewsResponse,
+  WwfcNewsAttributes,
   WwfcImageData,
   FetchArticlesOptions,
 } from '../model';
@@ -69,13 +70,28 @@ function buildArticleUrl(slug: string): string {
   return `${WWFC_BASE_URL}${normalizedSlug}`;
 }
 
+/** Thumbnail width — matches the resize target in the Bluesky client */
+const THUMBNAIL_WIDTH = 800;
+
 /**
- * Get the best available image URL from an article's attributes.
+ * Get the best available thumbnail URL from an article's attributes.
  *
- * The v2 API is inconsistent with casing — some articles use lowercase
- * `location`, others use uppercase `Location`. We check both.
+ * Prefers the WWFC image CDN (fit-in) which returns a resized image well
+ * under Bluesky's 1MB limit. Raw S3 URLs are often 1–3MB and will fail
+ * without Cloudinary configured.
  */
-function getBestImage(attrs: { imageData?: WwfcImageData; heroSmallImageData?: WwfcImageData }): string {
+function getBestImage(attrs: WwfcNewsAttributes): string {
+  const mediaId =
+    attrs.heroSmallMediaLibraryID ||
+    attrs.heroSmallImageData?.mediaLibraryID ||
+    attrs.mediaLibraryID ||
+    attrs.imageData?.mediaLibraryID;
+
+  if (mediaId) {
+    return `${WWFC_IMAGE_CDN_URL}/fit-in/${THUMBNAIL_WIDTH}x${THUMBNAIL_WIDTH}/${mediaId}.jpg`;
+  }
+
+  // Fallback: raw S3 URL (may exceed Bluesky's 1MB limit)
   const getLocation = (img?: WwfcImageData) => img?.location ?? img?.Location ?? '';
 
   return getLocation(attrs.heroSmallImageData) || getLocation(attrs.imageData);
