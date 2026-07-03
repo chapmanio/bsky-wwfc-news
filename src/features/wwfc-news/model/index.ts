@@ -4,7 +4,8 @@
 export type {
   WwfcArticle,
   WwfcNewsResponse,
-  WwfcNewsItem,
+  WwfcNewsDataItem,
+  WwfcNewsAttributes,
   WwfcImageData,
   FetchArticlesOptions,
 } from './types';

@@ -1,11 +1,11 @@
 /**
  * WWFC News API types
  *
- * Based on the Gamechanger CMS API response structure
+ * Based on the Gamechanger CMS v2 search API (JSON:API style)
  */
 
 /**
- * WWFC news article from the API
+ * WWFC news article (normalised from the API response)
  */
 export interface WwfcArticle {
   /** Unique post ID */
@@ -37,39 +37,56 @@ export interface WwfcArticle {
 }
 
 /**
- * WWFC API response structure
+ * v2 search API response wrapper
  */
 export interface WwfcNewsResponse {
-  success: boolean;
-  message: string;
-  pageNumber: number;
-  pageSize: number;
-  totalCount: number;
-  count: number;
-  body: WwfcNewsItem[];
-  datetime: string;
+  data: WwfcNewsDataItem[];
+  meta: {
+    totalCount: number;
+    totalPages: number;
+  };
+  links: {
+    self: string;
+    first: string;
+    prev: string | null;
+    next: string | null;
+    last: string;
+  };
 }
 
 /**
- * Individual news item from the API
+ * A single item in the `data` array — JSON:API resource object
  */
-export interface WwfcNewsItem {
+export interface WwfcNewsDataItem {
+  type: string;
+  id: string;
+  attributes: WwfcNewsAttributes;
+}
+
+/**
+ * Article attributes returned by the v2 search API
+ */
+export interface WwfcNewsAttributes {
   postID: string;
   postTitle: string;
-  postSummary?: string;
   postSlug: string;
   postCategory: string;
   postCategoryName: string;
   publishedDateTime: string;
+  description?: string | null;
   imageData?: WwfcImageData;
   heroSmallImageData?: WwfcImageData;
 }
 
 /**
- * Image data from the API
+ * Image data from the API.
+ *
+ * The v2 API is inconsistent — some articles use lowercase `location`,
+ * others use uppercase `Location`. We handle both when reading.
  */
 export interface WwfcImageData {
-  Location: string;
+  location?: string;
+  Location?: string;
   name: string;
   fileType: string;
   mediaLibraryID: string;

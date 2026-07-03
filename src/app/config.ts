@@ -27,6 +27,6 @@ export interface Env {
 export const WWFC_BASE_URL = 'https://www.wwfc.com';
 
 /**
- * WWFC API base URL
+ * WWFC API base URL (v2 news search endpoint)
  */
-export const WWFC_API_URL = 'https://webapi.gc.wycombewanderersfcservices.co.uk/v1/';
+export const WWFC_API_URL = 'https://news.cms.web.gc.wycombewanderersfcservices.co.uk/v2/';

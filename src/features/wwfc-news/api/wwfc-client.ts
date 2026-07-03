@@ -1,12 +1,17 @@
 /**
  * WWFC News API client
  *
- * Fetches news articles from the Gamechanger CMS API
+ * Fetches news articles from the Gamechanger CMS v2 search API
  */
 
 import { createHttpClient } from '../../../shared/api';
 import { WWFC_API_URL, WWFC_BASE_URL } from '../../../shared/config';
-import type { WwfcArticle, WwfcNewsResponse, FetchArticlesOptions } from '../model';
+import type {
+  WwfcArticle,
+  WwfcNewsResponse,
+  WwfcImageData,
+  FetchArticlesOptions,
+} from '../model';
 
 /**
  * Create a WWFC news API client
@@ -16,37 +21,34 @@ export function createWwfcClient() {
 
   return {
     /**
-     * Fetch recent news articles
+     * Fetch recent news articles via the v2 search endpoint
      */
     async fetchArticles(options: FetchArticlesOptions = {}): Promise<WwfcArticle[]> {
       const { pageSize = 10, category } = options;
 
       console.log(`Fetching WWFC articles (pageSize: ${pageSize})`);
 
-      const response = await http.get<WwfcNewsResponse>('news', {
+      const response = await http.get<WwfcNewsResponse>('search', {
         params: {
-          pageSize,
-          ...(category && { category }),
+          'page.size': pageSize,
+          'page.number': 1,
+          sort: 'publishedDateTime:desc',
+          ...(category && { q: `(postCategory:"${category}")` }),
         },
       });
 
-      if (!response.success) {
-        throw new Error(`WWFC API error: ${response.message}`);
-      }
+      console.log(`Got ${response.data.length} articles from WWFC API`);
 
-      console.log(`Got ${response.body.length} articles from WWFC API`);
-
-      const articles = response.body.map((item) => ({
-        // Ensure postId is a string for consistent comparison
-        postId: String(item.postID),
-        title: item.postTitle,
-        summary: item.postSummary || '',
-        slug: item.postSlug,
-        url: buildArticleUrl(item.postSlug),
-        publishedAt: new Date(item.publishedDateTime),
-        category: item.postCategory,
-        categoryName: item.postCategoryName,
-        thumbnailUrl: getBestImage(item),
+      const articles = response.data.map((item) => ({
+        postId: String(item.attributes.postID),
+        title: item.attributes.postTitle,
+        summary: item.attributes.description ?? '',
+        slug: item.attributes.postSlug,
+        url: buildArticleUrl(item.attributes.postSlug),
+        publishedAt: new Date(item.attributes.publishedDateTime),
+        category: item.attributes.postCategory,
+        categoryName: item.attributes.postCategoryName,
+        thumbnailUrl: getBestImage(item.attributes),
       }));
 
       // Log first few articles for debugging
@@ -63,17 +65,20 @@ export function createWwfcClient() {
  * Build the full article URL from a slug
  */
 function buildArticleUrl(slug: string): string {
-  // Ensure slug starts with /
   const normalizedSlug = slug.startsWith('/') ? slug : `/${slug}`;
   return `${WWFC_BASE_URL}${normalizedSlug}`;
 }
 
 /**
- * Get the best available image URL from an article
+ * Get the best available image URL from an article's attributes.
+ *
+ * The v2 API is inconsistent with casing — some articles use lowercase
+ * `location`, others use uppercase `Location`. We check both.
  */
-function getBestImage(item: WwfcNewsResponse['body'][0]): string {
-  // Prefer heroSmallImageData, then imageData
-  return item.heroSmallImageData?.Location || item.imageData?.Location || '';
+function getBestImage(attrs: { imageData?: WwfcImageData; heroSmallImageData?: WwfcImageData }): string {
+  const getLocation = (img?: WwfcImageData) => img?.location ?? img?.Location ?? '';
+
+  return getLocation(attrs.heroSmallImageData) || getLocation(attrs.imageData);
 }
 
 /**
