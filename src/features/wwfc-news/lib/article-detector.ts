@@ -6,6 +6,7 @@
 
 import type { ArticleItem } from '../../../entities/content-item';
 import type { StateManager } from '../../../entities/posted-state';
+import { logger } from '../../../shared/lib';
 import type { WwfcClient } from '../api';
 import type { WwfcArticle, FetchArticlesOptions } from '../model';
 
@@ -34,24 +35,27 @@ export async function fetchNewArticles(
   stateManager: StateManager,
   options: FetchArticlesOptions = {}
 ): Promise<ArticleItem[]> {
-  console.log('Fetching new WWFC articles...');
+  logger.info('wwfc-news', 'Fetching new articles...');
 
   // Fetch recent articles from the API
   const articles = await wwfcClient.fetchArticles(options);
-  console.log(`Fetched ${articles.length} articles from WWFC API`);
+  logger.info('wwfc-news', `Fetched ${articles.length} articles from API`);
 
   // Convert to content items
   const articleItems = articles.map(articleToContentItem);
 
   // Log article IDs for debugging
-  console.log('Article IDs:', articleItems.map((a) => a.id).join(', '));
+  logger.info('wwfc-news', `Article IDs: ${articleItems.map((a) => a.id).join(', ')}`);
 
   // Filter out already posted articles
   const newArticles = await stateManager.filterNewItems('wwfcNews', articleItems);
-  console.log(`Found ${newArticles.length} new articles (not yet posted)`);
+  logger.info('wwfc-news', `Found ${newArticles.length} new articles (not yet posted)`);
 
   if (newArticles.length > 0) {
-    console.log('New articles:', newArticles.map((a) => `"${a.title}" (${a.id})`).join(', '));
+    logger.info(
+      'wwfc-news',
+      `New articles: ${newArticles.map((a) => `"${a.title}" (${a.id})`).join(', ')}`
+    );
   }
 
   // Sort by publish date (oldest first so they're posted in chronological order)

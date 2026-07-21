@@ -7,6 +7,7 @@
  * - Write once at the end, only if something changed
  */
 
+import { logger, type LogSource } from '../../shared/lib';
 import { PostedState, SourceState, SourceKey, DEFAULT_STATE, DEFAULT_SOURCE_STATE } from './types';
 
 /** KV key for storing the state */
@@ -14,6 +15,11 @@ const STATE_KEY = 'posted-state';
 
 /** Maximum number of posted IDs to keep per source (to prevent unbounded growth) */
 const MAX_POSTED_IDS = 1000;
+
+/** Map KV source keys to log prefixes (wwfcNews → wwfc-news) */
+function logSourceForKey(source: SourceKey): LogSource {
+  return source === 'youtube' ? 'youtube' : 'wwfc-news';
+}
 
 /**
  * Create a state manager for interacting with KV storage
@@ -59,12 +65,12 @@ export function createStateManager(kv: KVNamespace) {
      */
     async saveIfDirty(): Promise<boolean> {
       if (!isDirty || !cachedState) {
-        console.log('KV: No changes to save');
+        logger.info('kv', 'No changes to save');
         return false;
       }
       await kv.put(STATE_KEY, JSON.stringify(cachedState));
       isDirty = false;
-      console.log('KV: State saved');
+      logger.info('kv', 'State saved');
       return true;
     },
 
@@ -247,14 +253,18 @@ export function createStateManager(kv: KVNamespace) {
       }
       const postedSet = new Set(cachedState[source].postedIds);
 
-      console.log(`[${source}] Checking ${items.length} items against ${postedSet.size} posted IDs`);
+      const logSource = logSourceForKey(source);
+      logger.info(
+        logSource,
+        `Checking ${items.length} items against ${postedSet.size} posted IDs`
+      );
 
       const newItems = items.filter((item) => {
         const isPosted = postedSet.has(item.id);
         if (isPosted) {
-          console.log(`  - ${item.id}: already posted`);
+          logger.info(logSource, `- ${item.id}: already posted`);
         } else {
-          console.log(`  + ${item.id}: NEW`);
+          logger.info(logSource, `+ ${item.id}: NEW`);
         }
         return !isPosted;
       });
@@ -269,14 +279,18 @@ export function createStateManager(kv: KVNamespace) {
       const sourceState = await this.getSourceState(source);
       const postedSet = new Set(sourceState.postedIds);
 
-      console.log(`[${source}] Checking ${items.length} items against ${postedSet.size} posted IDs`);
+      const logSource = logSourceForKey(source);
+      logger.info(
+        logSource,
+        `Checking ${items.length} items against ${postedSet.size} posted IDs`
+      );
 
       const newItems = items.filter((item) => {
         const isPosted = postedSet.has(item.id);
         if (isPosted) {
-          console.log(`  - ${item.id}: already posted`);
+          logger.info(logSource, `- ${item.id}: already posted`);
         } else {
-          console.log(`  + ${item.id}: NEW`);
+          logger.info(logSource, `+ ${item.id}: NEW`);
         }
         return !isPosted;
       });

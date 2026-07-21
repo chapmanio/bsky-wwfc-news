@@ -2,6 +2,8 @@
  * Retry utility with exponential backoff
  */
 
+import { logger } from './logger';
+
 export interface RetryOptions {
   /** Maximum number of retry attempts */
   maxAttempts?: number;
@@ -48,7 +50,7 @@ export async function withRetry<T>(fn: () => Promise<T>, options: RetryOptions =
         throw error;
       }
 
-      console.warn(`Attempt ${attempt} failed, retrying in ${delay}ms...`, error);
+      logger.warn('http', `Attempt ${attempt} failed, retrying in ${delay}ms...`, error);
       await sleep(delay);
 
       // Calculate next delay with exponential backoff

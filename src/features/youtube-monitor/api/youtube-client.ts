@@ -8,6 +8,7 @@
  */
 
 import { createHttpClient } from '../../../shared/api';
+import { logger } from '../../../shared/lib';
 import type { YouTubeVideo, YouTubePlaylistItemsResponse, YouTubeChannelResponse } from '../model';
 
 const YOUTUBE_API_BASE = 'https://www.googleapis.com/youtube/v3/';
@@ -100,7 +101,7 @@ export function createYouTubeClient(apiKey: string) {
         },
       });
 
-      console.log(`Fetched ${response.items.length} videos from playlist`);
+      logger.info('youtube', `Fetched ${response.items.length} videos from playlist`);
 
       let videos: YouTubeVideo[] = response.items.map((item) => ({
         videoId: item.snippet.resourceId.videoId,
@@ -121,22 +122,28 @@ export function createYouTubeClient(apiKey: string) {
         videos = videos.filter((video) => {
           const duration = durations.get(video.videoId);
           if (duration === undefined) {
-            console.log(`  ? "${video.title}" - no duration found, including`);
+            logger.info('youtube', `? "${video.title}" - no duration found, including`);
             return true;
           }
 
           const isTooShort = duration < MIN_VIDEO_DURATION_SECONDS;
           if (isTooShort) {
-            console.log(`  ✗ "${video.title}" (${duration}s) - under ${MIN_VIDEO_DURATION_SECONDS}s, filtering out`);
+            logger.info(
+              'youtube',
+              `✗ "${video.title}" (${duration}s) - under ${MIN_VIDEO_DURATION_SECONDS}s, filtering out`
+            );
           } else {
-            console.log(`  ✓ "${video.title}" (${duration}s)`);
+            logger.info('youtube', `✓ "${video.title}" (${duration}s)`);
           }
           return !isTooShort;
         });
 
         const filteredCount = beforeCount - videos.length;
         if (filteredCount > 0) {
-          console.log(`Filtered out ${filteredCount} short videos (<${MIN_VIDEO_DURATION_SECONDS}s)`);
+          logger.info(
+            'youtube',
+            `Filtered out ${filteredCount} short videos (<${MIN_VIDEO_DURATION_SECONDS}s)`
+          );
         }
       }
 
@@ -156,7 +163,7 @@ export function createYouTubeClient(apiKey: string) {
       filterShortVideos: boolean = true
     ): Promise<YouTubeVideo[]> {
       const uploadsPlaylistId = await this.fetchUploadsPlaylistId(channelId);
-      console.log(`Fetching uploads from playlist: ${uploadsPlaylistId}`);
+      logger.info('youtube', `Fetching uploads from playlist: ${uploadsPlaylistId}`);
       return this.fetchPlaylistVideos(uploadsPlaylistId, maxResults, filterShortVideos);
     },
   };
@@ -185,7 +192,7 @@ function getBestThumbnailUrl(thumbnails: Thumbnails): string {
 function parseIsoDuration(duration: string): number {
   const match = duration.match(/PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/);
   if (!match) {
-    console.warn(`Could not parse duration: ${duration}`);
+    logger.warn('youtube', `Could not parse duration: ${duration}`);
     return 0;
   }
 

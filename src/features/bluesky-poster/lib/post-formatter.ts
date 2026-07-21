@@ -6,6 +6,7 @@
 
 import type { ContentItem, VideoItem, ArticleItem } from '../../../entities/content-item';
 import { isVideoItem, isArticleItem } from '../../../entities/content-item';
+import { logger, logSourceForContent } from '../../../shared/lib';
 import type { BlueskyClient } from '../api';
 import type { PostResult, ExternalEmbedData } from '../model';
 
@@ -51,10 +52,13 @@ async function createVideoEmbed(
       if (uploadedThumb) {
         thumb = uploadedThumb;
       } else {
-        console.log(`Posting video "${video.title}" without thumbnail (upload returned null)`);
+        logger.info(
+          'youtube',
+          `Posting "${video.title}" without thumbnail (upload returned null)`
+        );
       }
     } catch (error) {
-      console.warn(`Failed to upload thumbnail for video ${video.id}:`, error);
+      logger.warn('youtube', `Failed to upload thumbnail for video ${video.id}:`, error);
       // Continue without thumbnail
     }
   }
@@ -94,12 +98,21 @@ async function createArticleEmbed(
       if (uploadedThumb) {
         thumb = uploadedThumb;
       } else {
-        console.log(`Posting article "${article.title}" without thumbnail (upload returned null)`);
+        logger.info(
+          'wwfc-news',
+          `Posting "${article.title}" without thumbnail (upload returned null) url=${article.thumbnailUrl}`
+        );
       }
     } catch (error) {
-      console.warn(`Failed to upload thumbnail for article ${article.id}:`, error);
+      logger.warn(
+        'wwfc-news',
+        `Failed to upload thumbnail for article ${article.id}:`,
+        error
+      );
       // Continue without thumbnail
     }
+  } else {
+    logger.warn('wwfc-news', `Article "${article.title}" has no thumbnailUrl`);
   }
 
   return {
@@ -117,6 +130,8 @@ export async function postContentItem(
   item: ContentItem,
   blueskyClient: BlueskyClient
 ): Promise<PostResult> {
+  const source = logSourceForContent(item.source);
+
   try {
     let result: { uri: string; cid: string };
 
@@ -143,7 +158,7 @@ export async function postContentItem(
     };
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
-    console.error(`Failed to post content item ${item.id}:`, error);
+    logger.error(source, `Failed to post content item ${item.id}:`, error);
 
     return {
       success: false,

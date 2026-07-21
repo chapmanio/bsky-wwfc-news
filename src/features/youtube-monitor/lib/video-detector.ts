@@ -6,6 +6,7 @@
 
 import type { VideoItem } from '../../../entities/content-item';
 import type { StateManager } from '../../../entities/posted-state';
+import { logger } from '../../../shared/lib';
 import type { YouTubeClient } from '../api';
 import type { YouTubeVideo } from '../model';
 
@@ -42,18 +43,18 @@ export async function fetchNewVideos(
   channelId: string,
   maxResults: number = 10
 ): Promise<VideoItem[]> {
-  console.log(`Fetching new videos for channel: ${channelId}`);
+  logger.info('youtube', `Fetching new videos for channel: ${channelId}`);
 
   // Fetch recent uploads from the channel
   const videos = await youtubeClient.fetchChannelUploads(channelId, maxResults);
-  console.log(`Got ${videos.length} regular videos`);
+  logger.info('youtube', `Got ${videos.length} regular videos`);
 
   // Convert to content items
   const videoItems = videos.map(videoToContentItem);
 
   // Filter out already posted videos
   const newVideos = await stateManager.filterNewItems('youtube', videoItems);
-  console.log(`Found ${newVideos.length} new videos (not yet posted)`);
+  logger.info('youtube', `Found ${newVideos.length} new videos (not yet posted)`);
 
   // Sort by publish date (oldest first so they're posted in chronological order)
   newVideos.sort((a, b) => a.publishedAt.getTime() - b.publishedAt.getTime());

@@ -6,6 +6,7 @@
 
 import { createHttpClient } from '../../../shared/api';
 import { WWFC_API_URL, WWFC_BASE_URL, WWFC_IMAGE_CDN_URL } from '../../../shared/config';
+import { logger } from '../../../shared/lib';
 import type {
   WwfcArticle,
   WwfcNewsResponse,
@@ -27,7 +28,7 @@ export function createWwfcClient() {
     async fetchArticles(options: FetchArticlesOptions = {}): Promise<WwfcArticle[]> {
       const { pageSize = 10, category } = options;
 
-      console.log(`Fetching WWFC articles (pageSize: ${pageSize})`);
+      logger.info('wwfc-news', `Fetching articles (pageSize: ${pageSize})`);
 
       const response = await http.get<WwfcNewsResponse>('search', {
         params: {
@@ -38,7 +39,7 @@ export function createWwfcClient() {
         },
       });
 
-      console.log(`Got ${response.data.length} articles from WWFC API`);
+      logger.info('wwfc-news', `Got ${response.data.length} articles from API`);
 
       const articles = response.data.map((item) => ({
         postId: String(item.attributes.postID),
@@ -52,9 +53,12 @@ export function createWwfcClient() {
         thumbnailUrl: getBestImage(item.attributes),
       }));
 
-      // Log first few articles for debugging
+      // Log first few articles for debugging (include thumbnail URL)
       articles.slice(0, 3).forEach((a, i) => {
-        console.log(`  ${i + 1}. "${a.title}" (ID: ${a.postId})`);
+        logger.info(
+          'wwfc-news',
+          `${i + 1}. "${a.title}" (ID: ${a.postId}) thumb=${a.thumbnailUrl || '(none)'}`
+        );
       });
 
       return articles;
@@ -77,8 +81,12 @@ const THUMBNAIL_WIDTH = 800;
  * Get the best available thumbnail URL from an article's attributes.
  *
  * Prefers the WWFC image CDN (fit-in) which returns a resized image well
- * under Bluesky's 1MB limit. Raw S3 URLs are often 1-3MB and would
+ * under Bluesky's 1MB limit. Raw S3 URLs are often 1–3MB and would
  * exceed the limit.
+ *
+ * Note: fetches of this CDN URL from Cloudflare Workers must send a
+ * browser-like User-Agent — the CDN returns 403 to the default Worker UA.
+ * See `uploadImageFromUrl` in the Bluesky client.
  */
 function getBestImage(attrs: WwfcNewsAttributes): string {
   const mediaId =

@@ -11,6 +11,7 @@ import type { ContentItem } from '../entities/content-item';
 import { createYouTubeClient, fetchNewVideos } from '../features/youtube-monitor';
 import { createWwfcClient, fetchNewArticles } from '../features/wwfc-news';
 import { createBlueskyClient, postContentItems, type PostResult } from '../features/bluesky-poster';
+import { logger, logSourceForContent } from '../shared/lib';
 import type { Env } from './config';
 
 // Re-export Env type for wrangler
@@ -45,13 +46,13 @@ async function initializeState(
 
   // Fetch current YouTube videos and mark as posted
   try {
-    console.log('Initializing YouTube state...');
-    console.log(`Using channel ID: ${env.YOUTUBE_CHANNEL_ID}`);
+    logger.info('youtube', 'Initializing state...');
+    logger.info('youtube', `Using channel ID: ${env.YOUTUBE_CHANNEL_ID}`);
     const youtubeClient = createYouTubeClient(env.YOUTUBE_API_KEY);
 
     // Fetch videos
     const videos = await youtubeClient.fetchChannelUploads(env.YOUTUBE_CHANNEL_ID, 20);
-    console.log(`Found ${videos.length} regular videos`);
+    logger.info('youtube', `Found ${videos.length} regular videos`);
 
     // If skipLatest is true, skip the first (most recent) video
     let videosToMark = videos;
@@ -59,7 +60,7 @@ async function initializeState(
       const skipped = videos[0];
       videosToMark = videos.slice(1);
       result.youtube.skippedLatest = `${skipped.title} (${skipped.videoId})`;
-      console.log(`Skipping latest video for testing: ${skipped.title}`);
+      logger.info('youtube', `Skipping latest video for testing: ${skipped.title}`);
     }
 
     const videoIds = videosToMark.map((v) => v.videoId);
@@ -67,16 +68,16 @@ async function initializeState(
     if (videoIds.length > 0) {
       await stateManager.markManyAsPosted('youtube', videoIds);
       result.youtube.markedAsPosted = videoIds.length;
-      console.log(`Marked ${videoIds.length} YouTube videos as already posted`);
+      logger.info('youtube', `Marked ${videoIds.length} videos as already posted`);
     }
   } catch (error) {
-    console.error('Error initializing YouTube state:', error);
+    logger.error('youtube', 'Error initializing state:', error);
     throw error;
   }
 
   // Fetch current WWFC articles and mark as posted
   try {
-    console.log('Initializing WWFC news state...');
+    logger.info('wwfc-news', 'Initializing state...');
     const wwfcClient = createWwfcClient();
     const articles = await wwfcClient.fetchArticles({ pageSize: 20 });
 
@@ -86,7 +87,7 @@ async function initializeState(
       const skipped = articles[0];
       articlesToMark = articles.slice(1);
       result.wwfcNews.skippedLatest = `${skipped.title} (${skipped.postId})`;
-      console.log(`Skipping latest article for testing: ${skipped.title}`);
+      logger.info('wwfc-news', `Skipping latest article for testing: ${skipped.title}`);
     }
 
     const articleIds = articlesToMark.map((a) => a.postId);
@@ -94,14 +95,14 @@ async function initializeState(
     if (articleIds.length > 0) {
       await stateManager.markManyAsPosted('wwfcNews', articleIds);
       result.wwfcNews.markedAsPosted = articleIds.length;
-      console.log(`Marked ${articleIds.length} WWFC articles as already posted`);
+      logger.info('wwfc-news', `Marked ${articleIds.length} articles as already posted`);
     }
   } catch (error) {
-    console.error('Error initializing WWFC news state:', error);
+    logger.error('wwfc-news', 'Error initializing state:', error);
     throw error;
   }
 
-  console.log('Initialization complete!');
+  logger.info('app', 'Initialization complete!');
   return result;
 }
 
@@ -118,23 +119,23 @@ async function processNewContent(env: Env): Promise<void> {
 
   // Load state once at the start (1 KV read)
   await stateManager.loadState();
-  console.log('KV: State loaded');
+  logger.info('kv', 'State loaded');
 
   // Collect all new content items
   const allNewItems: ContentItem[] = [];
 
   // Fetch new YouTube videos
   try {
-    console.log('Checking for new YouTube videos...');
+    logger.info('youtube', 'Checking for new videos...');
     const youtubeClient = createYouTubeClient(env.YOUTUBE_API_KEY);
     const newVideos = await fetchNewVideos(youtubeClient, stateManager, env.YOUTUBE_CHANNEL_ID);
-    console.log(`Found ${newVideos.length} new videos`);
+    logger.info('youtube', `Found ${newVideos.length} new videos`);
     allNewItems.push(...newVideos);
 
     // Reset failure count on success (in memory, only marks dirty if count was > 0)
     stateManager.resetFailuresSync('youtube');
   } catch (error) {
-    console.error('Error fetching YouTube videos:', error);
+    logger.error('youtube', 'Error fetching videos:', error);
     const failureCount = stateManager.recordFailureSync('youtube');
 
     // Report to Sentry if we've hit the threshold
@@ -148,16 +149,16 @@ async function processNewContent(env: Env): Promise<void> {
 
   // Fetch new WWFC news articles
   try {
-    console.log('Checking for new WWFC news...');
+    logger.info('wwfc-news', 'Checking for new articles...');
     const wwfcClient = createWwfcClient();
     const newArticles = await fetchNewArticles(wwfcClient, stateManager);
-    console.log(`Found ${newArticles.length} new articles`);
+    logger.info('wwfc-news', `Found ${newArticles.length} new articles`);
     allNewItems.push(...newArticles);
 
     // Reset failure count on success (in memory, only marks dirty if count was > 0)
     stateManager.resetFailuresSync('wwfcNews');
   } catch (error) {
-    console.error('Error fetching WWFC news:', error);
+    logger.error('wwfc-news', 'Error fetching articles:', error);
     const failureCount = stateManager.recordFailureSync('wwfcNews');
 
     // Report to Sentry if we've hit the threshold
@@ -171,7 +172,7 @@ async function processNewContent(env: Env): Promise<void> {
 
   // If no new content, save state if needed (e.g., failure count changed) and we're done
   if (allNewItems.length === 0) {
-    console.log('No new content to post');
+    logger.info('app', 'No new content to post');
     await stateManager.saveIfDirty();
     return;
   }
@@ -179,7 +180,7 @@ async function processNewContent(env: Env): Promise<void> {
   // Sort all items by publication date (oldest first)
   allNewItems.sort((a, b) => a.publishedAt.getTime() - b.publishedAt.getTime());
 
-  console.log(`Posting ${allNewItems.length} new items to Bluesky...`);
+  logger.info('bluesky', `Posting ${allNewItems.length} new items...`);
 
   // Create Bluesky client and post content
   try {
@@ -196,7 +197,7 @@ async function processNewContent(env: Env): Promise<void> {
     // Save state once at the end (1 KV write, only if something changed)
     await stateManager.saveIfDirty();
   } catch (error) {
-    console.error('Error posting to Bluesky:', error);
+    logger.error('bluesky', 'Error posting:', error);
 
     // Always report Bluesky errors to Sentry (critical path)
     Sentry.captureException(error, {
@@ -223,8 +224,10 @@ function processPostResultsSync(
   let failureCount = 0;
 
   for (const result of results) {
+    const source = logSourceForContent(result.item.source);
+
     if (result.success) {
-      console.log(`✓ Posted: ${result.item.title}`);
+      logger.info(source, `✓ Posted: ${result.item.title}`);
 
       if (result.item.source === 'youtube') {
         successfulVideos.push(result.item.id);
@@ -232,7 +235,7 @@ function processPostResultsSync(
         successfulArticles.push(result.item.id);
       }
     } else {
-      console.error(`✗ Failed to post: ${result.item.title} - ${result.error}`);
+      logger.error(source, `✗ Failed to post: ${result.item.title} - ${result.error}`);
       failureCount++;
 
       // Report individual post failures to Sentry
@@ -253,16 +256,19 @@ function processPostResultsSync(
   // Update state for successful posts (in memory)
   if (successfulVideos.length > 0) {
     stateManager.markManyAsPostedSync('youtube', successfulVideos);
-    console.log(`Marked ${successfulVideos.length} videos as posted`);
+    logger.info('youtube', `Marked ${successfulVideos.length} videos as posted`);
   }
 
   if (successfulArticles.length > 0) {
     stateManager.markManyAsPostedSync('wwfcNews', successfulArticles);
-    console.log(`Marked ${successfulArticles.length} articles as posted`);
+    logger.info('wwfc-news', `Marked ${successfulArticles.length} articles as posted`);
   }
 
   // Log summary
-  console.log(`\nSummary: ${results.length - failureCount}/${results.length} posts successful`);
+  logger.info(
+    'app',
+    `Summary: ${results.length - failureCount}/${results.length} posts successful`
+  );
 }
 
 /**
@@ -277,12 +283,12 @@ const workerHandlers = {
     env: Env,
     _ctx: ExecutionContext
   ): Promise<void> {
-    console.log(`Cron trigger fired at ${new Date(controller.scheduledTime).toISOString()}`);
+    logger.info('app', `Cron trigger fired at ${new Date(controller.scheduledTime).toISOString()}`);
 
     try {
       await processNewContent(env);
     } catch (error) {
-      console.error('Error in scheduled handler:', error);
+      logger.error('app', 'Error in scheduled handler:', error);
       throw error;
     }
   },
@@ -328,7 +334,7 @@ const workerHandlers = {
       try {
         const skipLatest = url.searchParams.get('skipLatest') === 'true';
         if (skipLatest) {
-          console.log('Initialize called with skipLatest=true (testing mode)');
+          logger.info('app', 'Initialize called with skipLatest=true (testing mode)');
         }
 
         const result = await initializeState(env, { skipLatest });
@@ -354,7 +360,7 @@ const workerHandlers = {
       try {
         const stateManager = createStateManager(env.POSTED_ITEMS);
         await stateManager.clearAllState();
-        console.log('All state cleared');
+        logger.info('kv', 'All state cleared');
 
         return new Response(
           JSON.stringify({

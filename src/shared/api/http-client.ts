@@ -2,7 +2,7 @@
  * HTTP client utilities for making API requests
  */
 
-import { withRetry } from '../lib';
+import { withRetry, logger } from '../lib';
 
 export interface HttpClientOptions {
   baseUrl?: string;
@@ -45,7 +45,7 @@ export function createHttpClient(options: HttpClientOptions = {}) {
       const { params, headers, ...fetchOptions } = requestOptions;
       const url = buildUrl(baseUrl, path, params);
 
-      console.log(`[HTTP GET] ${url}`);
+      logger.info('http', `GET ${url}`);
 
       return withRetry(
         async () => {
